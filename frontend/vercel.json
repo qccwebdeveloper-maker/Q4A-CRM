@@ -5,6 +5,14 @@
       "destination": "https://q4a-crm.onrender.com/api/:path*"
     },
     {
+      "source": "/assets/:path*",
+      "destination": "https://q4a-crm.onrender.com/assets/:path*"
+    },
+    {
+      "source": "/uploads/:path*",
+      "destination": "https://q4a-crm.onrender.com/uploads/:path*"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
