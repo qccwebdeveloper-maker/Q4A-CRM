@@ -1,14 +1,40 @@
 // ─────────────────────────────────────────────────────────────
-//  EMAIL SENDER — nodemailer only, delivers to any recipient.
+//  EMAIL SENDER — delivers to any recipient.
 //  Priority order:
-//  1. Brevo SMTP      — set BREVO_USER + BREVO_PASS  (preferred, any recipient)
-//  2. Gmail SMTP      — set GMAIL_USER + GMAIL_PASS   (fallback)
-//  3. Ethereal        — preview URL fallback           (always works, no real delivery)
+//  0. Brevo HTTP API  — set BREVO_API_KEY              (preferred — many hosts,
+//                        including Render's free tier, block outbound SMTP
+//                        ports like 587 entirely; this goes over HTTPS instead)
+//  1. Brevo SMTP      — set BREVO_USER + BREVO_PASS    (only works where SMTP isn't blocked)
+//  2. Gmail SMTP      — set GMAIL_USER + GMAIL_PASS    (fallback, same SMTP caveat)
+//  3. Ethereal        — preview URL fallback            (always works, no real delivery)
 // ─────────────────────────────────────────────────────────────
 async function sendMail({ to, subject, html }) {
   const nodemailer = require('nodemailer');
 
-  // ── 1. Brevo SMTP (works on Render/EC2, sends to any address) ──
+  // ── 0. Brevo HTTP API (bypasses SMTP-port blocking) ──
+  const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
+  if (brevoApiKey) {
+    try {
+      const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': brevoApiKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          sender: { name: 'Q4A CRM', email: process.env.BREVO_SENDER_EMAIL || 'no-reply@q4acrm.app' },
+          to: [{ email: to }],
+          subject,
+          htmlContent: html,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`Brevo API ${res.status}: ${await res.text()}`);
+      console.log(`✅ Email sent via Brevo API → ${to}`);
+      return { ok: true, via: 'brevo-api' };
+    } catch (e) {
+      console.warn('[Email] Brevo API failed:', e.message);
+    }
+  }
+
+  // ── 1. Brevo SMTP (only useful on hosts that don't block outbound SMTP) ──
   const brevoUser = (process.env.BREVO_USER || '').trim();
   const brevoPass = (process.env.BREVO_PASS || '').trim();
 
@@ -52,12 +78,17 @@ async function sendMail({ to, subject, html }) {
   }
 
   // ── 3. Ethereal preview fallback ──
-  console.log('[Email] Using Ethereal preview — add BREVO_USER + BREVO_PASS for real delivery');
+  // Also plain SMTP (port 587), so on a host that blocks that port this needs
+  // its own connection/socket timeouts too — without them, a blocked port
+  // hangs the send indefinitely instead of failing, unlike the account-creation
+  // step above which already had a manual race-timeout.
+  console.log('[Email] Using Ethereal preview — add BREVO_API_KEY for real delivery');
   const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('Ethereal timeout')), 10000));
   const acc     = await Promise.race([nodemailer.createTestAccount(), timeout]);
   const t2      = nodemailer.createTransport({
     host: 'smtp.ethereal.email', port: 587, secure: false,
     auth: { user: acc.user, pass: acc.pass },
+    connectionTimeout: 8000, greetingTimeout: 5000, socketTimeout: 10000,
   });
   const info = await t2.sendMail({ from: `"Q4A CRM" <${acc.user}>`, to, subject, html });
   const url  = nodemailer.getTestMessageUrl(info);
