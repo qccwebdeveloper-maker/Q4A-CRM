@@ -24,7 +24,12 @@ const allowedOrigins = [
   'http://crm.qccertification.com',
   'https://crm.qccertification.com',
   process.env.CLIENT_URL,
-].filter(Boolean);
+]
+  // Env vars (CLIENT_URL) are prone to picking up a stray trailing space or
+  // slash when copy-pasted into a dashboard, which silently breaks the exact
+  // string match below — strip both so a pasted value still matches.
+  .map(o => (o || '').trim().replace(/\/$/, ''))
+  .filter(Boolean);
 // Allow localhost / 127.0.0.1 with or without a port (e.g. http://localhost:3000 for the
 // CRA dev server, or http://localhost on port 80 from the nginx Docker container).
 const isLocalhost = (o) => /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
@@ -32,7 +37,8 @@ app.use(cors({
   origin: (origin, cb) => {
     if (!origin) return cb(null, true);
     if (isLocalhost(origin)) return cb(null, true);
-    if (allowedOrigins.includes(origin)) return cb(null, true);
+    const normalized = origin.trim().replace(/\/$/, '');
+    if (allowedOrigins.includes(normalized)) return cb(null, true);
     return cb(new Error('CORS: origin not allowed'));
   },
   credentials: true,
