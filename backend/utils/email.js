@@ -1,17 +1,45 @@
 // ─────────────────────────────────────────────────────────────
 //  EMAIL SENDER — delivers to any recipient.
 //  Priority order:
-//  0. Brevo HTTP API  — set BREVO_API_KEY              (preferred — many hosts,
+//  0. Resend HTTP API — set RESEND_API_KEY              (preferred — many hosts,
 //                        including Render's free tier, block outbound SMTP
 //                        ports like 587 entirely; this goes over HTTPS instead)
-//  1. Brevo SMTP      — set BREVO_USER + BREVO_PASS    (only works where SMTP isn't blocked)
-//  2. Gmail SMTP      — set GMAIL_USER + GMAIL_PASS    (fallback, same SMTP caveat)
-//  3. Ethereal        — preview URL fallback            (always works, no real delivery)
+//  1. Brevo HTTP API  — set BREVO_API_KEY               (same idea, alternate provider)
+//  2. Brevo SMTP      — set BREVO_USER + BREVO_PASS     (only works where SMTP isn't blocked)
+//  3. Gmail SMTP      — set GMAIL_USER + GMAIL_PASS     (fallback, same SMTP caveat)
+//  4. Ethereal        — preview URL fallback             (always works, no real delivery)
 // ─────────────────────────────────────────────────────────────
 async function sendMail({ to, subject, html }) {
   const nodemailer = require('nodemailer');
 
-  // ── 0. Brevo HTTP API (bypasses SMTP-port blocking) ──
+  // ── 0. Resend HTTP API (bypasses SMTP-port blocking) ──
+  // On a fresh/unverified Resend account, the "from" address must be their
+  // shared onboarding@resend.dev sender, and delivery is restricted to the
+  // email the Resend account itself was signed up with — add a verified
+  // custom domain (Resend dashboard → Domains) to send to any recipient.
+  const resendApiKey = (process.env.RESEND_API_KEY || '').trim();
+  if (resendApiKey) {
+    try {
+      const res = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${resendApiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          from: process.env.RESEND_FROM_EMAIL || 'Q4A CRM <onboarding@resend.dev>',
+          to: [to],
+          subject,
+          html,
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) throw new Error(`Resend API ${res.status}: ${await res.text()}`);
+      console.log(`✅ Email sent via Resend → ${to}`);
+      return { ok: true, via: 'resend' };
+    } catch (e) {
+      console.warn('[Email] Resend API failed:', e.message);
+    }
+  }
+
+  // ── 1. Brevo HTTP API (bypasses SMTP-port blocking) ──
   const brevoApiKey = (process.env.BREVO_API_KEY || '').trim();
   if (brevoApiKey) {
     try {
@@ -34,7 +62,7 @@ async function sendMail({ to, subject, html }) {
     }
   }
 
-  // ── 1. Brevo SMTP (only useful on hosts that don't block outbound SMTP) ──
+  // ── 2. Brevo SMTP (only useful on hosts that don't block outbound SMTP) ──
   const brevoUser = (process.env.BREVO_USER || '').trim();
   const brevoPass = (process.env.BREVO_PASS || '').trim();
 
@@ -57,7 +85,7 @@ async function sendMail({ to, subject, html }) {
     }
   }
 
-  // ── 2. Gmail SMTP fallback ──
+  // ── 3. Gmail SMTP fallback ──
   const gmailUser = (process.env.GMAIL_USER || '').trim();
   const gmailPass = (process.env.GMAIL_PASS || '').replace(/\s/g, '');
 
@@ -77,7 +105,7 @@ async function sendMail({ to, subject, html }) {
     }
   }
 
-  // ── 3. Ethereal preview fallback ──
+  // ── 4. Ethereal preview fallback ──
   // Also plain SMTP (port 587), so on a host that blocks that port this needs
   // its own connection/socket timeouts too — without them, a blocked port
   // hangs the send indefinitely instead of failing, unlike the account-creation
