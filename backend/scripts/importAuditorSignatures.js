@@ -20,6 +20,11 @@ const XLSX   = require('xlsx');
 const AdmZip = require('adm-zip');
 const mongoose = require('mongoose');
 
+// connectDB() falls back to a hardcoded Atlas URI if MONGODB_URI isn't set,
+// so this must run before requiring it or the script silently writes to the
+// wrong database instead of whatever this .env points at.
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+
 const connectDB = require('../config/db');
 const AuditorSignature = require('../models/AuditorSignature');
 const { uploadToS3 } = require('../utils/s3');
