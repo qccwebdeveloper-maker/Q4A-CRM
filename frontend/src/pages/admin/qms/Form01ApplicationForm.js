@@ -4,7 +4,7 @@ import QMSFormPage from './QMSFormPage';
 import useStandards from './useStandards';
 import { localMobileNumber } from '../../../utils/phone';
 const APP_TYPES = ['Initial','Surveillance','Re-certification','Un-Announced','Follow-up', 'Special Audit'];
-const ACCRED = ['UAF','UASL'];
+const ACCRED = ['UAF','UASL','Not Accreditated'];
 const COUNTRY_CODES = [
   {code:'+1',country:'US/Canada'},{code:'+7',country:'Russia'},{code:'+20',country:'Egypt'},
   {code:'+27',country:'South Africa'},{code:'+30',country:'Greece'},{code:'+31',country:'Netherlands'},
